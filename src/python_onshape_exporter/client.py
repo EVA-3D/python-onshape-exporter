@@ -1,3 +1,4 @@
+import asyncio
 from base64 import b64encode
 from datetime import datetime
 from urllib.parse import urlencode, urlparse, parse_qsl
@@ -21,6 +22,8 @@ class Onshape:
         ).digest()
 
     def sign_request(self, method, path, query, headers):
+        if not query:
+            query = ""
         query = urlencode(query)
         nonce = token_urlsafe(25)
         method = method.lower()
@@ -83,6 +86,12 @@ class Onshape:
             },
         )
 
+    async def get_translation_formats(self, did):
+        return await self.__call(
+            "get",
+            f"​/api​/translations​/d/{did}",
+        )
+
     async def export_part(self, did, wvm_id, wvm_type, eid, part_id, configuration):
         return await self.__call(
             "get",
@@ -95,6 +104,53 @@ class Onshape:
                 "configuration": configuration,
             },
         )
+
+    async def translate_partstudio_to_step(self, did, wvm_id, wvm_type, eid, part_id, configuration):
+        return await self.__call(
+            "post",
+            f"/api/partstudios/d/{did}/{wvm_type}/{wvm_id}/e/{eid}/translations",
+            json={
+                "elementId": eid,
+                "emailLink": False,
+                "flattenAssemblies": False,
+                "grouping": True,
+                "includeExportIds": False,
+                "partIds": part_id,
+                "configuration": configuration,
+                "formatName": "STEP",
+                "stepVersionString": "AP242",
+                "storeInDocument": False,
+                "triggerAutoDownload": False,
+                "yAxisIsUp": False,
+            },
+        )
+
+    async def get_translation_status(self, tid):
+        return await self.__call(
+            "get",
+            f"/api/translations/{tid}",
+        )
+
+    async def get_document_external_data(self, did, fid):
+        return await self.__call(
+            "get",
+            f"/api/documents/d/{did}/externaldata/{fid}",
+        )
+
+    async def export_to_step(self, did, wvm_id, wvm_type, eid, part_id, configuration):
+        # initialte translation to STEP
+        translation = await self.translate_partstudio_to_step(did=did,wvm_id=wvm_id, wvm_type=wvm_type, eid=eid, part_id=part_id, configuration=configuration)
+        while True:
+            # wait for the traslation to finish
+            status = await self.get_translation_status(tid=translation["id"])
+            if status["requestState"].upper() == "DONE":
+                # translation is done
+                break
+            await asyncio.sleep(2)
+
+        for fid in status["resultExternalDataIds"]:
+            # NOT Supporting multiple downloads for now
+            return await self.get_document_external_data(did=did, fid=fid)
 
     async def get_shaded_view(self, did, wid, eid, height=1200, width=850):
         return await self.__call(
