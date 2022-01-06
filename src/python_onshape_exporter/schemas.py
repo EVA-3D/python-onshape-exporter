@@ -31,7 +31,7 @@ class BOMItem(BaseModel):
 
     @property
     def is_printable(self):
-        return self.material.upper() == "PETG"
+        return self.material.upper() in ("PETG", "ABS", "ASA", "PLA")
 
 
 class BOMTable(BaseModel):
